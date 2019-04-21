@@ -1,0 +1,9 @@
+# ignore folders
+build/
+cmake-build-debug/
+.idea/
+
+# ignore files
+*.dSYM
+
+
