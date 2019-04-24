@@ -1,50 +1,54 @@
 #ifndef SLAM_RGBDODOMETRY_H
 #define SLAM_RGBDODOMETRY_H
 
+#include <vector>
+
 #include <opencv2/core/core.hpp>
 
-class Odometry // interface
+struct RgbdFrame
 {
-    // depth range, meters
-    static inline float
-    DEFAULT_MIN_DEPTH()
-    {
-        return 0.0f;
-    }
+    RgbdFrame();
 
-    static inline float
-    DEFAULT_MAX_DEPTH()
-    {
-        return 4.0f;
-    }
+    RgbdFrame(const cv::Mat &img,
+              const cv::Mat &depth,
+              const cv::Mat &mask = cv::Mat(),
+              int id = -1);
 
-    static inline float
-    DEFAULT_MAX_DEPTH_DIFF()
-    {
-        return 0.07f;
-    }
+    virtual ~RgbdFrame();
 
-    // process parameters
-    static inline float
-    DEFAULT_MAX_POINTS_PART() // how many points will be processed
-    {
-        return 0.07f;
-    }
+    virtual void release();
 
-    static inline float
-    DEFAULT_MAX_TRANSLATION()
-    {
-        return 0.15f;
-    }
-
-    static inline float
-    DEFAULT_MAX_ROTATION()
-    {
-        return 15; // degree
-    }
+    int id_;
+    cv::Mat img_;
+    cv::Mat depth_;
+    cv::Mat mask_;
 };
 
-class RGBDOdometry : public Odometry
+struct OdometryFrame : public RgbdFrame
+{
+    OdometryFrame();
+
+    OdometryFrame(const cv::Mat &img,
+                  const cv::Mat &depth,
+                  const cv::Mat &mask = cv::Mat(),
+                  int id = -1);
+
+    virtual void release();
+
+    void releasePyramids();
+
+    std::vector<cv::Mat> pyramidImg_;
+    std::vector<cv::Mat> pyramidDepth_;
+    std::vector<cv::Mat> pyramidMask_;
+
+    std::vector<cv::Mat> pyramid_dIdx_;
+    std::vector<cv::Mat> pyramid_dIdy_;
+    std::vector<cv::Mat> pyramidTextureMask_;
+
+};
+
+
+class RGBDOdometry
 {
 public:
 
@@ -57,6 +61,36 @@ public:
                  const std::vector<int> &iterCount = std::vector<int>(),
                  const std::vector<float> &minGradMag = std::vector<float>(),
                  float maxPointsPart = DEFAULT);
+
+    void prepareOdometryFrame(OdometryFrame &frame, int cacheType);
+
+    bool compute(const cv::Mat &srcImg,
+                 const cv::Mat srcDepth,
+                 const cv::Mat &srcMask,
+                 const cv::Mat &dstImg,
+                 const cv::Mat $dstDepth,
+                 const cv::Mat &dstMask,
+                 cv::Mat &Rt,
+                 const cv::Mat &initRt = cv::Mat());
+
+protected:
+
+    bool computeImpl(const OdometryFrame &srcFrame,
+                     const OdometryFrame &dstFrame,
+                     cv::Mat &Rt,
+                     const cv::Mat &initRt);
+
+    double minDepth_;
+    double maxDepth_;
+    double maxDepthDiff_;
+    std::vector<int> iterCounts_;
+    std::vector<float> minGradMag_;
+
+    cv::Mat cameraMatrix_;
+    double maxPointPart_;
+
+    double maxTranslation_;
+    double maxRotation_;
 };
 
 
