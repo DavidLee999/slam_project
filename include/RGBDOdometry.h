@@ -26,6 +26,10 @@ struct RgbdFrame
 
 struct OdometryFrame : public RgbdFrame
 {
+    enum
+    {
+        CACHE_SRC = 1, CACHE_DST = 2, CACHE_ALL = CACHE_SRC + CACHE_DST
+    };
     OdometryFrame();
 
     OdometryFrame(const cv::Mat &img,
@@ -43,6 +47,7 @@ struct OdometryFrame : public RgbdFrame
 
     std::vector<cv::Mat> pyramid_dIdx_;
     std::vector<cv::Mat> pyramid_dIdy_;
+    std::vector<cv::Mat> pyramidCloud_;
     std::vector<cv::Mat> pyramidTextureMask_;
 
 };
@@ -58,22 +63,25 @@ public:
                  float minDepth,
                  float maxDepth,
                  float maxDepthDiff,
-                 const std::vector<int> &iterCount = std::vector<int>(),
+                 double maxTranslation,
+                 double maxRotation,
+                 const std::vector<int> &iterCounts = std::vector<int>(),
                  const std::vector<float> &minGradMag = std::vector<float>(),
                  float maxPointsPart = DEFAULT);
 
-    void prepareOdometryFrame(OdometryFrame &frame, int cacheType);
-
     bool compute(const cv::Mat &srcImg,
-                 const cv::Mat srcDepth,
+                 const cv::Mat &srcDepth,
                  const cv::Mat &srcMask,
                  const cv::Mat &dstImg,
-                 const cv::Mat $dstDepth,
+                 const cv::Mat &dstDepth,
                  const cv::Mat &dstMask,
                  cv::Mat &Rt,
                  const cv::Mat &initRt = cv::Mat());
 
 protected:
+
+
+    void prepareOdometryFrame(OdometryFrame &frame, int cacheType);
 
     bool computeImpl(const OdometryFrame &srcFrame,
                      const OdometryFrame &dstFrame,
