@@ -30,6 +30,7 @@ struct OdometryFrame : public RgbdFrame
     {
         CACHE_SRC = 1, CACHE_DST = 2, CACHE_ALL = CACHE_SRC + CACHE_DST
     };
+
     OdometryFrame();
 
     OdometryFrame(const cv::Mat &img,
@@ -57,17 +58,15 @@ class RGBDOdometry
 {
 public:
 
-    RGBDOdometry();
-
     RGBDOdometry(const cv::Mat &cameraMatrix,
                  float minDepth,
                  float maxDepth,
                  float maxDepthDiff,
-                 double maxTranslation,
-                 double maxRotation,
+                 float maxTranslation,
+                 int   maxRotation,
+                 float maxPointsPart,
                  const std::vector<int> &iterCounts = std::vector<int>(),
-                 const std::vector<float> &minGradMag = std::vector<float>(),
-                 float maxPointsPart = DEFAULT);
+                 const std::vector<float> &minGradMag = std::vector<float>());
 
     bool compute(const cv::Mat &srcImg,
                  const cv::Mat &srcDepth,
@@ -83,8 +82,8 @@ protected:
 
     void prepareOdometryFrame(OdometryFrame &frame, int cacheType);
 
-    bool computeImpl(const OdometryFrame &srcFrame,
-                     const OdometryFrame &dstFrame,
+    bool computeImpl(OdometryFrame &srcFrame,
+                     OdometryFrame &dstFrame,
                      cv::Mat &Rt,
                      const cv::Mat &initRt);
 
@@ -95,7 +94,7 @@ protected:
     std::vector<float> minGradMag_;
 
     cv::Mat cameraMatrix_;
-    double maxPointPart_;
+    double maxPointsPart_;
 
     double maxTranslation_;
     double maxRotation_;

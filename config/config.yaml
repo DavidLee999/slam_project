@@ -18,12 +18,9 @@ camera.cy: 249.7
 camera.depth_scale: 0.0002
 
 # VO Parameters
-number_of_features: 1000
-scale_factor: 1.2
-level_pyramid: 8
-match_ratio: 2.0
-max_num_lost: 10
-min_inliers: 10
-keyframe_rotation: 0.1
-keyframe_translation: 0.1
-map_point_erase_ratio: 0.1
+min_depth: 0.0 # all in meters
+max_depth: 4.0
+max_depth_diff: 0.07
+max_point_ratio: 0.1
+max_translation: 0.15
+max_rotation: 15 # degrees

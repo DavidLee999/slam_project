@@ -10,8 +10,9 @@
 
 
 #include "config.h"
+#include "RGBDOdometry.h"
 
-bool readAssociateFile(const std::string 	     config_file,
+bool readAssociateFile(const std::string 	    &config_file,
 					   std::vector<std::string> &rgb_files,
 					   std::vector<double> 		&rgb_times,
 					   std::vector<std::string> &depth_files,
@@ -56,8 +57,23 @@ void readCameraParams(float 			&fx,
 		fx 			= Config::get<float>("camera.fx");
 		fy 			= Config::get<float>("camera.fy");
 		cx 			= Config::get<float>("camera.cx");
-		cx 			= Config::get<float>("camera.cx");
+		cy 			= Config::get<float>("camera.cy");
 		depth_scale = Config::get<float>("camera.depth_scale");
+}
+
+void readVOParams(float &min_depth,
+                  float &max_depth,
+                  float &max_depth_diff,
+                  float &max_points_part,
+                  float &max_translation,
+                  int   &max_rotation)
+{
+    min_depth       = Config::get<float>("min_depth");
+    max_depth       = Config::get<float>("max_depth");
+    max_depth_diff  = Config::get<float>("max_depth_diff");
+    max_points_part = Config::get<float>("max_point_ratio");
+    max_translation = Config::get<float>("max_translation");
+    max_rotation    = Config::get<int>("max_rotation");
 }
 
 void run_slam(const std::vector<std::string> &rgb_files,
@@ -69,6 +85,23 @@ void run_slam(const std::vector<std::string> &rgb_files,
 	float fx, fy, cx, cy, depth_scale;
 	readCameraParams(fx, fy, cx, cy, depth_scale);
 
+	// read VO paras
+	float min_depth, max_depth, max_depth_diff, max_points_part, max_translation;
+	int max_rotation;
+	readVOParams(min_depth, max_depth, max_depth_diff, max_points_part, max_translation, max_rotation);
+
+	std::vector<int> iterCounts(4);
+	iterCounts[0] = 7;
+	iterCounts[1] = 7;
+	iterCounts[2] = 7;
+	iterCounts[3] = 10;
+
+	std::vector<float> minGradMags(4);
+	minGradMags[0] = 12.f;
+	minGradMags[1] = 5.f;
+	minGradMags[2] = 3.f;
+	minGradMags[3] = 1.f;
+
 	// display
 	cv::namedWindow("RGBD Color", cv::WINDOW_AUTOSIZE);
 	cv::namedWindow("RGBD Depth", cv::WINDOW_AUTOSIZE);
@@ -77,15 +110,17 @@ void run_slam(const std::vector<std::string> &rgb_files,
 
 	// display params
 	char text[100];
-	int fontFace = cv::FONT_HERSHEY_PLAIN;
+	int fontFace     = cv::FONT_HERSHEY_PLAIN;
 	double fontScale = 1;
-	int thickness = 1;
+	int thickness    = 1;
 	cv::Point textOrg(10, 50);
 
-	float camera[] = { fx, 0.0f, cx, fy, 0.0f, cy, 0.0f, 0.0f, 1.0f };
+	float camera[] = { fx, 0.0f, cx, 0.0f, fy, cy, 0.0f, 0.0f, 1.0f };
 	cv::Mat cameraMatrix(3, 3, CV_32FC1, camera);
 	cv::Mat rotationMatrix, translationMatrix;
-	// std::shared_ptr<RGBDOdometry> odom;
+
+	RGBDOdometry odom(cameraMatrix, min_depth, max_depth, max_depth_diff, max_translation, max_rotation,
+			max_points_part, iterCounts, minGradMags);
 
 	bool isFirst = true;
 	for (int i = 0; i != rgb_files.size() - 1; ++i)
@@ -103,25 +138,57 @@ void run_slam(const std::vector<std::string> &rgb_files,
 
 		cv::Mat rigidTransform;
 
-		// if (!odom)
-		{
-			std::vector<int> iterCounts(4);
-			iterCounts[0] = 7;
-			iterCounts[1] = 7;
-			iterCounts[2] = 7;
-			iterCounts[3] = 10;
+		bool isSuccess = odom.compute(color_img0, depthFlt0, cv::Mat(),
+				color_img1, depthFlt1, cv::Mat(), rigidTransform);
 
-			std::vector<int> minGradMags(4);
-			minGradMags[0] = 12;
-			minGradMags[1] = 5;
-			minGradMags[2] = 3;
-			minGradMags[3] = 1;
+		cv::Mat rotationMat    = rigidTransform(cv::Rect(0, 0, 3, 3)).clone();
+		cv::Mat translationMat = rigidTransform(cv::Rect(3, 0, 1, 3)).clone();
 
-			// initialize
-			// odom =
+		if (isSuccess) {
+			if (isFirst) {
+				rotationMatrix = rotationMat.clone();
+				translationMatrix = translationMat.clone();
+				isFirst = false;
+				continue;
+			}
 
-			std::cout << "initialize tracker" << std::endl;
+			// update R and t
+			translationMatrix = translationMatrix + rotationMatrix * translationMat;
+			rotationMatrix = rotationMat * rotationMatrix;
 		}
+
+		// visualize trajectory
+		if (!isFirst)
+		{
+			int x = static_cast<int>(60.f * translationMatrix.at<double>(0)) + 800 / 2;
+			int y = static_cast<int>(60.f * translationMatrix.at<double>(2)) + 800 / 2;
+
+			cv::circle(traj, cv::Point(x, y), 1, CV_RGB(255, 0, 0), 2);
+			cv::rectangle(traj, cv::Point(10, 30), cv::Point(559, 50), CV_RGB(0, 0, 0), CV_FILLED);
+
+			if (isSuccess)
+			{
+				sprintf(text, "Coordinates: x = %04fm y=%04fm z = %04fm",
+						translationMatrix.at<double>(0),
+						translationMatrix.at<double>(1),
+						translationMatrix.at<double>(2));
+			}
+			else
+			{
+				sprintf(text, "Fail to compute odometry");
+			}
+
+			cv::putText(traj, text, textOrg, fontFace, fontScale, cv::Scalar::all(255), thickness, 0);
+		}
+
+		cv::imshow("Trajectory", traj);
+		cv::imshow("RGBD Color", color_img1);
+
+		cv::Mat depth_show;
+		depthFlt1.convertTo(depth_show, CV_8UC1, 255.0 / max_depth);
+		cv::imshow("RGBD Depth", depth_show);
+
+		cv::waitKey(10);
 	}
 
 }
@@ -138,16 +205,14 @@ int main(int argc, char **argv)
 
 	std::vector<std::string> rgb_files, depth_files;
 	std::vector<double> rgb_times, depth_times;
-	bool successed = readAssociateFile(argv[1], rgb_files, rgb_times, depth_files, depth_times);
-	if (!successed)
+	bool isSuccess = readAssociateFile(argv[1], rgb_files, rgb_times, depth_files, depth_times);
+	if (!isSuccess)
 	{
 		std::cerr << "Read Files Error." << std::endl;
 		return -1;
 	}
 
-
-
-
+	run_slam(rgb_files, rgb_times, depth_files, depth_times);
 
 	return 0;
 }

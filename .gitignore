@@ -7,3 +7,4 @@ cmake-build-debug/
 *.dSYM
 
 
+bin/run_slam
