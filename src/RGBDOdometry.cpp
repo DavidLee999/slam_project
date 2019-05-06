@@ -35,6 +35,7 @@ static void depthMat2PointCloud(const cv::Mat &depth_map,
     const float cx     = cameraMatrix.at<float>(0, 2);
     const float cy     = cameraMatrix.at<float>(1, 2);
     pointCloud.create(depth_map.size(), CV_32FC3);
+
     // pre-compute some constants for speeding up
     cv::Mat_<float> x_cache(1, depth_map.cols), y_cache(depth_map.rows, 1);
     float *x_ptr = x_cache[0], *y_ptr = y_cache[0];
@@ -174,6 +175,26 @@ static void buildPyramidTexturedMask(const std::vector<cv::Mat> &pyramid_dIdx,
     }
 }
 
+static void computeCorresps(const cv::Mat &K,
+                            const cv::Mat &K_inv,
+                            const cv::Mat &Rt,
+                            const cv::Mat &depth0,
+                            const cv::Mat &validMask0,
+                            const cv::Mat &depth1,
+                            const cv::Mat &selectMask1,
+                            float maxDepthDiff,
+                            cv::Mat &corresps)
+{
+    cv::Mat  corresps_ (depth1.size(), CV_16SC2, cv::Scalar::all(-1));
+    cv::Rect r(0, 0, depth1.cols, depth1.rows);
+    cv::Mat  Kt = Rt(cv::Rect(3, 0, 1, 3)).clone(); // t, transformation
+
+    Kt = K * Kt; // K * t
+    const float *Kt_ptr = Kt.ptr<const float>();
+
+    cv::AutoBuffer<float> buf(3 * (depth1.cols + depth1.rows));
+}
+
 /*****************
  * RgbdFrame
  *****************/
@@ -270,6 +291,37 @@ bool RGBDOdometry::computeImpl(OdometryFrame &srcFrame, OdometryFrame &dstFrame,
 {
     prepareOdometryFrame(srcFrame, OdometryFrame::CACHE_SRC);
     prepareOdometryFrame(dstFrame, OdometryFrame::CACHE_DST);
+
+    const int transformDim       = 6;
+    const int minOverdetermScale = 20;
+    const int minCorrespsCount   = transformDim * minOverdetermScale;
+    std::vector<cv::Mat> pyramidCameraMatrix;
+    cv::Mat resultRt = (initRt.empty()) ? cv::Mat::eye(4, 4, CV_64FC1) : initRt.clone();
+    cv::Mat currRt, ksi;
+
+    buildPyramidCameraMatrix(cameraMatrix_, static_cast<int>( srcFrame.pyramidDepth_.size() ), pyramidCameraMatrix);
+
+    bool isOk = false;
+    for (int level = static_cast<int>( iterCounts_.size() ) - 1; level >= 0; --level)
+    {
+        const cv::Mat &levelCameraMatrix     = pyramidCameraMatrix[level];
+        const cv::Mat &levelCameraMatrix_inv = levelCameraMatrix.inv(cv::DECOMP_SVD);
+        const cv::Mat &srcLevelDepth         = srcFrame.pyramidDepth_[level];
+        const cv::Mat &dstLevelDepth         = dstFrame.pyramidDepth_[level];
+
+        const float fx = levelCameraMatrix.at<float>(0, 0);
+        const float fy = levelCameraMatrix.at<float>(1, 1);
+        const double determintThreshold = 1e-6;
+
+        cv::Mat AtA_rgbd, AtB_rgbd;
+        cv::Mat corresps_rgbd;
+
+        for (int iter = 0; iter < iterCounts_[level]; ++iter)
+        {
+            cv::Mat resultRt_inv = resultRt.inv(cv::DECOMP_SVD);
+
+        }
+    }
 
     return true;
 }
