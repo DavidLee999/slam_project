@@ -193,6 +193,85 @@ static void computeCorresps(const cv::Mat &K,
     const float *Kt_ptr = Kt.ptr<const float>();
 
     cv::AutoBuffer<float> buf(3 * (depth1.cols + depth1.rows));
+    float *KRK_inv0_u1 = buf;
+    float *KRK_inv1_v1_plus_KRK_inv2 = KRK_inv0_u1 + depth1.cols;
+    float *KRK_inv3_u1 = KRK_inv1_v1_plus_KRK_inv2 + depth1.rows;
+    float *KRK_inv4_v1_plus_KRK_inv5 = KRK_inv3_u1 + depth1.cols;
+    float *KRK_inv6_u1 = KRK_inv4_v1_plus_KRK_inv5 + depth1.rows;
+    float *KRK_inv7_v1_plus_KRK_inv8 = KRK_inv6_u1 + depth1.cols;
+
+    cv::Mat R       = Rt(cv::Rect(0, 0, 3, 3)).clone();
+    cv::Mat KRK_inv = K * R * K_inv;
+    const float *KRK_inv_ptr = KRK_inv.ptr<const float>();
+    for (int u1 = 0; u1 < depth1.cols; ++u1)
+    {
+        KRK_inv0_u1[u1] = KRK_inv_ptr[0] * u1;
+        KRK_inv3_u1[u1] = KRK_inv_ptr[3] * u1;
+        KRK_inv6_u1[u1] = KRK_inv_ptr[6] * u1;
+    }
+    for (int v1 = 0; v1 < depth1.rows; ++v1)
+    {
+        KRK_inv1_v1_plus_KRK_inv2[v1] = KRK_inv_ptr[1] * v1 + KRK_inv_ptr[2];
+        KRK_inv4_v1_plus_KRK_inv5[v1] = KRK_inv_ptr[1] * v1 + KRK_inv_ptr[5];
+        KRK_inv7_v1_plus_KRK_inv8[v1] = KRK_inv_ptr[1] * v1 + KRK_inv_ptr[8];
+    }
+
+    int correspCount = 0;
+    for (int v1 = 0; v1 < depth1.rows; ++v1)
+    {
+        const float *depth1_row = depth1.ptr<const float>(v1);
+        const uchar *mask1_row  = selectMask1.ptr<const uchar>(v1);
+        for (int u1 = 0; u1 < depth1.rows; ++u1)
+        {
+            float d1 = depth1_row[u1];
+            if (mask1_row[u1])
+            {
+                float transformed_d1 = d1 * (KRK_inv6_u1[u1] + KRK_inv7_v1_plus_KRK_inv8[v1]) + Kt_ptr[2];
+                if (transformed_d1 > 0)
+                {
+                    float transformed_d1_inv = 1.f / transformed_d1;
+                    int u0 = cvRound( transformed_d1_inv * (d1 * (KRK_inv0_u1[u1] + KRK_inv1_v1_plus_KRK_inv2[v1]
+                            + Kt_ptr[0])) );
+                    int v0 = cvRound( transformed_d1_inv * (d1 * (KRK_inv3_u1[u1] + KRK_inv4_v1_plus_KRK_inv5[v1]
+                            + Kt_ptr[1])) );
+
+                    if (r.contains(cv::Point(u0, v0)))
+                    {
+                        float d0 = depth0.at<float>(v0, u0);
+                        if (validMask0.at<uchar>(u0, v0) && std::abs(transformed_d1 - d0) <= maxDepthDiff)
+                        {
+                            cv::Vec2s &c = corresps_.at<cv::Vec2s>(v0, u0);
+                            if (-1 != c[0])
+                            {
+                                int exist_u1 = c[0], exist_v1 = c[1];
+                                float exist_d1 = depth1.at<float>(exist_v1, exist_u1) *
+                                        (KRK_inv6_u1[exist_u1] + KRK_inv7_v1_plus_KRK_inv8[exist_v1] + Kt_ptr[2]);
+                                if (transformed_d1 > exist_d1)
+                                    continue;
+                            }
+                            else
+                                ++correspCount;
+
+                            c = cv::Vec2s(static_cast<short>(u1), static_cast<short>(v1));
+                        }
+                    } // if r
+                } // if transformed_d1
+            } // if mask1
+        } // for u1
+    } // for v1
+
+    corresps.create(correspCount, 1, CV_32SC4);
+    cv::Vec4i *corresps_ptr = corresps.ptr<cv::Vec4i>();
+    for (int v0 = 0, i = 0; v0 < corresps_.rows; ++v0)
+    {
+        const cv::Vec2s *corresps_row = corresps_.ptr<cv::Vec2s>(v0);
+        for (int u0 = 0; u0 < corresps_.cols; ++u0)
+        {
+            const cv::Vec2s &c = corresps_row[u0];
+            if (-1 != c[0])
+                corresps_ptr[i++] = cv::Vec4i(u0, v0, c[0], c[1]);
+        }
+    }
 }
 
 /*****************
