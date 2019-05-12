@@ -175,6 +175,86 @@ static void buildPyramidTexturedMask(const std::vector<cv::Mat> &pyramid_dIdx,
     }
 }
 
+static inline void calcRgbdEquationCoeffs(double *C,
+                                          double dIdx,
+                                          double dIdy,
+                                          const cv::Point3f &p3d,
+                                          double fx,
+                                          double fy)
+{
+    double invz = 1. / p3d.z;
+    double v0 = dIdx * fx * invz;
+    double v1 = dIdy * fy * invz;
+    double v2 = -(v0 * p3d.x + v1 * p3d.y) * invz;
+
+    C[0] = -p3d.z * v1 + p3d.y * v2;
+    C[1] =  p3d.z * v0 - p3d.x * v2;
+    C[2] = -p3d.y * v0 + p3d.x * v1;
+    C[3] = v0;
+    C[4] = v1;
+    C[5] = v2;
+}
+
+static void calcRbgdLsmMatrices(const cv::Mat &img0,
+                                const cv::Mat &cloud0,
+                                const cv::Mat &Rt,
+                                const cv::Mat &img1,
+                                const cv::Mat &dI_dx1,
+                                const cv::Mat &dI_dy1,
+                                const cv::Mat &corresps,
+                                float fx,
+                                float fy,
+                                cv::Mat AtA,
+                                cv::Mat AtB)
+{
+    const int transformDim  = 6;
+    const int correspsCount = corresps.rows;
+    const double sobelScale = 0.125;
+    AtA = cv::Mat(transformDim, transformDim, CV_64FC1, cv::Scalar(0));
+    AtB = cv::Mat(transformDim, 1, CV_64FC1, cv::Scalar(0));
+
+    double *AtB_ptr               = AtB.ptr<double>();
+    const double *Rt_ptr          = Rt.ptr<const double>();
+    const cv::Vec4i *corresps_ptr = corresps.ptr<cv::Vec4i>();
+    cv::AutoBuffer<float> diffs(correspsCount);
+    float *diffs_ptr = diffs;
+
+    double sigma = 0;
+    for (int correspIndex = 0; correspIndex < correspsCount; ++correspIndex)
+    {
+        const cv::Vec4i &c = corresps_ptr[correspIndex];
+        int u0 = c[0], v0 = c[1], u1 = c[2], v1 = c[3];
+
+        diffs_ptr[correspIndex] = static_cast<float>(static_cast<int>(img0.at<uchar>(v0, u0)) -
+                                                     static_cast<int>(img1.at<uchar>(v1, u1)));
+
+        sigma += diffs_ptr[correspIndex] * diffs_ptr[correspIndex];
+    }
+
+    sigma = std::sqrt(sigma / correspsCount);
+
+    std::vector<double> A_buf(transformDim, 0);
+    for (int correspIndex = 0; correspIndex < correspsCount; ++correspIndex)
+    {
+        const cv::Vec4i &c = corresps_ptr[correspIndex];
+        int u0 = c[0], v0 = c[1], u1 = c[2], v1 = c[3];
+
+        double w = sigma + std::abs(diffs_ptr[correspIndex]);
+        w = w > DBL_EPSILON ? 1. / w : 1.;
+
+        double w_sobelScale = w * sobelScale;
+
+        const cv::Point3f &p0 = cloud0.at<cv::Point3f>(v0, u0);
+        cv::Point3f tp0;
+        tp0.x = (float)(p0.x * Rt_ptr[0] + p0.y * Rt_ptr[1] + p0.z * Rt_ptr[2] + Rt_ptr[3]);
+        tp0.y = (float)(p0.x * Rt_ptr[4] + p0.y * Rt_ptr[5] + p0.z * Rt_ptr[6] + Rt_ptr[7]);
+        tp0.z = (float)(p0.x * Rt_ptr[8] + p0.y * Rt_ptr[9] + p0.z * Rt_ptr[10] + Rt_ptr[11]);
+
+
+    }
+
+}
+
 static void computeCorresps(const cv::Mat &K,
                             const cv::Mat &K_inv,
                             const cv::Mat &Rt,
@@ -398,6 +478,12 @@ bool RGBDOdometry::computeImpl(OdometryFrame &srcFrame, OdometryFrame &dstFrame,
         for (int iter = 0; iter < iterCounts_[level]; ++iter)
         {
             cv::Mat resultRt_inv = resultRt.inv(cv::DECOMP_SVD);
+            computeCorresps(levelCameraMatrix, levelCameraMatrix_inv, resultRt, srcLevelDepth, srcFrame.pyramidMask_[level],
+                    dstLevelDepth, dstFrame.pyramidTextureMask_[level], maxDepthDiff_, corresps_rgbd);
+
+            if (corresps_rgbd.rows < minCorrespsCount)
+                break;
+
 
         }
     }

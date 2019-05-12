@@ -87,17 +87,17 @@ protected:
                      cv::Mat &Rt,
                      const cv::Mat &initRt);
 
-    double minDepth_;
-    double maxDepth_;
-    double maxDepthDiff_;
+    float minDepth_;
+    float maxDepth_;
+    float maxDepthDiff_;
     std::vector<int> iterCounts_;
     std::vector<float> minGradMag_;
 
     cv::Mat cameraMatrix_;
-    double maxPointsPart_;
+    float maxPointsPart_;
 
-    double maxTranslation_;
-    double maxRotation_;
+    float maxTranslation_;
+    int maxRotation_;
 };
 
 
