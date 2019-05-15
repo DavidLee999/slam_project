@@ -14,6 +14,7 @@ set( LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib )
 find_package( OpenCV REQUIRED )
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
+
 set( THIRD_PARTY_LIBS ${OpenCV_LIBS} )
 
 include_directories( ${PROJECT_SOURCE_DIR}/include )

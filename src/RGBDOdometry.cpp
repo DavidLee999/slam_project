@@ -1,6 +1,12 @@
 #include <iostream>
 
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+
+#include <Eigen/Core>
+#include <Eigen/Dense>
+#include <unsupported/Eigen/MatrixFunctions>
+#include <opencv2/core/eigen.hpp>
 
 #include "RGBDOdometry.h"
 
@@ -234,6 +240,7 @@ static void calcRbgdLsmMatrices(const cv::Mat &img0,
     sigma = std::sqrt(sigma / correspsCount);
 
     std::vector<double> A_buf(transformDim, 0);
+    double *A_ptr = &A_buf[0];
     for (int correspIndex = 0; correspIndex < correspsCount; ++correspIndex)
     {
         const cv::Vec4i &c = corresps_ptr[correspIndex];
@@ -250,7 +257,25 @@ static void calcRbgdLsmMatrices(const cv::Mat &img0,
         tp0.y = (float)(p0.x * Rt_ptr[4] + p0.y * Rt_ptr[5] + p0.z * Rt_ptr[6] + Rt_ptr[7]);
         tp0.z = (float)(p0.x * Rt_ptr[8] + p0.y * Rt_ptr[9] + p0.z * Rt_ptr[10] + Rt_ptr[11]);
 
+        calcRgbdEquationCoeffs(A_ptr, w_sobelScale * dI_dx1.at<short>(v1, u1),
+                w_sobelScale * dI_dy1.at<short>(v1, u1), tp0, fx, fy);
 
+        for (int y = 0;  y < transformDim; ++y)
+        {
+            double *AtA_ptr = AtA.ptr<double>(y);
+            for (int x = y; x < transformDim; ++x)
+            {
+                AtA_ptr[x] += A_ptr[y] * A_ptr[x];
+            }
+
+            AtB_ptr[y] += A_ptr[y] * w * diffs_ptr[correspIndex];
+        }
+    }
+
+    for (int y = 0; y < transformDim; ++y)
+    {
+        for (int x = y + 1; x < transformDim; ++x)
+            AtA.at<double>(x, y) = AtA.at<double>(y, x);
     }
 
 }
@@ -352,6 +377,44 @@ static void computeCorresps(const cv::Mat &K,
                 corresps_ptr[i++] = cv::Vec4i(u0, v0, c[0], c[1]);
         }
     }
+}
+
+static bool solveSystem(const cv::Mat &AtA, const cv::Mat &AtB, double detThreshold, cv::Mat &x)
+{
+    double det = cv::determinant(AtA);
+    if  (fabs(det) < detThreshold || cvIsNaN(det) || cvIsInf(det))
+        return false;
+
+    cv::solve(AtA, AtB, x, cv::DECOMP_CHOLESKY);
+
+    return true;
+}
+
+static void computeProjectiveMatrix(const cv::Mat &ksi, cv::Mat &Rt)
+{
+    const double *ksi_ptr = ksi.ptr<const double>();
+    Eigen::Matrix<double, 4, 4> twist, g;
+
+    twist << 0.,          -ksi_ptr[2], ksi_ptr[1],  ksi_ptr[3],
+            ksi_ptr[2],  0.,          -ksi_ptr[0], ksi_ptr[4],
+            -ksi_ptr[1], ksi_ptr[0],  0,           ksi_ptr[5],
+            0.,          0.,          0.,          0.;
+    g = twist.exp();
+
+    cv::eigen2cv(g, Rt);
+
+}
+
+static bool testDeltaTransformation(const cv::Mat &deltaRt, float maxTranslation, int maxRotation)
+{
+    float translation = cv::norm(deltaRt(cv::Rect(3, 0, 1, 3)));
+
+    cv::Mat rvec;
+    cv::Rodrigues(deltaRt(cv::Rect(0, 0, 3, 3)), rvec);
+
+    double rotation = cv::norm(rvec) * 180. / CV_PI;
+
+    return translation <= maxTranslation && rotation < (double)maxRotation;
 }
 
 /*****************
@@ -484,9 +547,33 @@ bool RGBDOdometry::computeImpl(OdometryFrame &srcFrame, OdometryFrame &dstFrame,
             if (corresps_rgbd.rows < minCorrespsCount)
                 break;
 
+            if (corresps_rgbd.rows >= minCorrespsCount)
+            {
+                calcRbgdLsmMatrices(srcFrame.pyramidImg_[level], srcFrame.pyramidCloud_[level], resultRt,
+                        dstFrame.pyramidImg_[level], dstFrame.pyramid_dIdx_[level], dstFrame.pyramid_dIdy_[level],
+                        corresps_rgbd, fx, fy, AtA_rgbd, AtB_rgbd);
+            }
 
+            bool solutionExist = solveSystem(AtA_rgbd, AtB_rgbd, determintThreshold, ksi);
+            if (!solutionExist)
+                break;
+
+            computeProjectiveMatrix(ksi, currRt);
+            resultRt = currRt * resultRt;
+            isOk = true;
         }
     }
 
-    return true;
+    Rt = resultRt;
+    if (isOk)
+    {
+        cv::Mat deltaRt;
+        if (initRt.empty())
+            deltaRt = resultRt;
+        else
+            deltaRt = resultRt * initRt.inv(cv::DECOMP_SVD);
+
+        isOk = testDeltaTransformation(deltaRt, maxTranslation_, maxRotation_);
+    }
+    return isOk;
 }
