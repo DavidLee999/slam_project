@@ -210,8 +210,8 @@ static void calcRbgdLsmMatrices(const cv::Mat &img0,
                                 const cv::Mat &corresps,
                                 float fx,
                                 float fy,
-                                cv::Mat AtA,
-                                cv::Mat AtB)
+                                cv::Mat &AtA,
+                                cv::Mat &AtB)
 {
     const int transformDim  = 6;
     const int correspsCount = corresps.rows;
@@ -294,6 +294,9 @@ static void computeCorresps(const cv::Mat &K,
     cv::Rect r(0, 0, depth1.cols, depth1.rows);
     cv::Mat  Kt = Rt(cv::Rect(3, 0, 1, 3)).clone(); // t, transformation
 
+    // Rt is of type double
+    Kt.convertTo(Kt, CV_32FC1);
+
     Kt = K * Kt; // K * t
     const float *Kt_ptr = Kt.ptr<const float>();
 
@@ -306,6 +309,9 @@ static void computeCorresps(const cv::Mat &K,
     float *KRK_inv7_v1_plus_KRK_inv8 = KRK_inv6_u1 + depth1.cols;
 
     cv::Mat R       = Rt(cv::Rect(0, 0, 3, 3)).clone();
+
+    R.convertTo(R, CV_32FC1);
+
     cv::Mat KRK_inv = K * R * K_inv;
     const float *KRK_inv_ptr = KRK_inv.ptr<const float>();
     for (int u1 = 0; u1 < depth1.cols; ++u1)
@@ -317,8 +323,8 @@ static void computeCorresps(const cv::Mat &K,
     for (int v1 = 0; v1 < depth1.rows; ++v1)
     {
         KRK_inv1_v1_plus_KRK_inv2[v1] = KRK_inv_ptr[1] * v1 + KRK_inv_ptr[2];
-        KRK_inv4_v1_plus_KRK_inv5[v1] = KRK_inv_ptr[1] * v1 + KRK_inv_ptr[5];
-        KRK_inv7_v1_plus_KRK_inv8[v1] = KRK_inv_ptr[1] * v1 + KRK_inv_ptr[8];
+        KRK_inv4_v1_plus_KRK_inv5[v1] = KRK_inv_ptr[4] * v1 + KRK_inv_ptr[5];
+        KRK_inv7_v1_plus_KRK_inv8[v1] = KRK_inv_ptr[7] * v1 + KRK_inv_ptr[8];
     }
 
     int correspCount = 0;
