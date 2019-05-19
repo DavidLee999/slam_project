@@ -126,15 +126,17 @@ void run_slam(const std::vector<std::string> &rgb_files,
 	for (int i = 0; i != rgb_files.size() - 1; ++i)
 	{
 		// read image
-		cv::Mat color_img0 = cv::imread(rgb_files[i], cv::IMREAD_GRAYSCALE);
+		cv::Mat color_img0 = cv::imread(rgb_files[i]);
 		cv::Mat depth_img0 = cv::imread(depth_files[i], cv::IMREAD_UNCHANGED);
-		cv::Mat color_img1 = cv::imread(rgb_files[i + 1], cv::IMREAD_GRAYSCALE);
+		cv::Mat color_img1 = cv::imread(rgb_files[i + 1]);
 		cv::Mat depth_img1 = cv::imread(depth_files[i + 1], cv::IMREAD_UNCHANGED);
 
 		// convert depth unit from millimeter to meter
 		cv::Mat depthFlt0, depthFlt1;
 		depth_img0.convertTo(depthFlt0, CV_32FC1, depth_scale);
 		depth_img1.convertTo(depthFlt1, CV_32FC1, depth_scale);
+		cv::cvtColor(color_img0, color_img0, cv::COLOR_BGR2GRAY);
+        cv::cvtColor(color_img1, color_img1, cv::COLOR_BGR2GRAY);
 
 		cv::Mat rigidTransform;
 

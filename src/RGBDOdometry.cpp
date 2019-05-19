@@ -20,13 +20,13 @@ static void buildPyramidCameraMatrix(const cv::Mat &cameraMatrix,
     cv::Mat tmp_cameraMatrix;
 
     pyramidCameraMatrix.resize(levels);
-    // cameraMatrix.convertTo(tmp_cameraMatrix, CV_64FC1);
-    cameraMatrix.copyTo(tmp_cameraMatrix);
+    cameraMatrix.convertTo(tmp_cameraMatrix, CV_64FC1);
+    // cameraMatrix.copyTo(tmp_cameraMatrix);
 
     for (size_t i = 0; i < levels; ++i)
     {
-        cv::Mat levelCameraMatrix = 0 == i ? tmp_cameraMatrix : 0.5f * pyramidCameraMatrix[i - 1];
-        levelCameraMatrix.at<float>(2, 2) = 1.0f;
+        cv::Mat levelCameraMatrix = 0 == i ? tmp_cameraMatrix : 0.5 * pyramidCameraMatrix[i - 1];
+        levelCameraMatrix.at<double>(2, 2) = 1.0f;
         pyramidCameraMatrix[i] = levelCameraMatrix;
     }
 
@@ -36,10 +36,12 @@ static void depthMat2PointCloud(const cv::Mat &depth_map,
                                 const cv::Mat &cameraMatrix,
                                 cv::Mat &pointCloud)
 {
-    const float fx_inv = 1.0f / cameraMatrix.at<float>(0, 0);
-    const float fy_inv = 1.0f / cameraMatrix.at<float>(1, 1);
-    const float cx     = cameraMatrix.at<float>(0, 2);
-    const float cy     = cameraMatrix.at<float>(1, 2);
+    cv::Mat _cameraMatrix;
+    cameraMatrix.convertTo(_cameraMatrix, CV_32FC1);
+    const float fx_inv = 1.0f / _cameraMatrix.at<float>(0, 0);
+    const float fy_inv = 1.0f / _cameraMatrix.at<float>(1, 1);
+    const float cx     = _cameraMatrix.at<float>(0, 2);
+    const float cy     = _cameraMatrix.at<float>(1, 2);
     pointCloud.create(depth_map.size(), CV_32FC3);
 
     // pre-compute some constants for speeding up
@@ -90,7 +92,11 @@ static void buildPyramidMask(const cv::Mat &mask,
                              const double maxDepth,
                              std::vector<cv::Mat> &pyramidMask)
 {
-    cv::Mat validMask = cv::Mat(pyramidDepth[0].size(), CV_8UC1, cv::Scalar(255));
+    cv::Mat validMask;
+    if (mask.empty())
+        validMask = cv::Mat(pyramidDepth[0].size(), CV_8UC1, cv::Scalar(255));
+    else
+        validMask = mask.clone();
 
     cv::buildPyramid(validMask, pyramidMask, static_cast<int>( pyramidDepth.size() - 1 ));
 
@@ -112,7 +118,7 @@ static void buildPyramidSobel(const std::vector<cv::Mat> &pyramidImg,
     pyramidSobel.resize(pyramidImg.size());
     for (size_t i = 0; i < pyramidImg.size(); ++i)
     {
-        cv::Sobel(pyramidImg[i], pyramidSobel[i], CV_16S, dx, dy);
+        cv::Sobel(pyramidImg[i], pyramidSobel[i], CV_16S, dx, dy, 3);
     }
 }
 
@@ -125,7 +131,7 @@ static void randomSubsetOfMask(cv::Mat &mask,
 
     if (needCount < nonzeros)
     {
-        cv::RNG rng;
+        cv::RNG rng(42);
         cv::Mat maskSubset(mask.size(), CV_8UC1, cv::Scalar(0));
         int     subsetCnt = 0;
         while (subsetCnt < needCount)
@@ -151,7 +157,7 @@ static void buildPyramidTexturedMask(const std::vector<cv::Mat> &pyramid_dIdx,
                                      double maxPointsPart,
                                      std::vector<cv::Mat> &pyramidTexturedMask)
 {
-    const double sobelScale      = 1.0 / 8.0;
+    const double sobelScale      = 0.125;
     const float  sobelScale2_inv = 1.f / static_cast<float>(sobelScale * sobelScale);
     pyramidTexturedMask.resize(pyramid_dIdx.size());
 
@@ -294,11 +300,8 @@ static void computeCorresps(const cv::Mat &K,
     cv::Rect r(0, 0, depth1.cols, depth1.rows);
     cv::Mat  Kt = Rt(cv::Rect(3, 0, 1, 3)).clone(); // t, transformation
 
-    // Rt is of type double
-    Kt.convertTo(Kt, CV_32FC1);
-
     Kt = K * Kt; // K * t
-    const float *Kt_ptr = Kt.ptr<const float>();
+    const double *Kt_ptr = Kt.ptr<const double>();
 
     cv::AutoBuffer<float> buf(3 * (depth1.cols + depth1.rows));
     float *KRK_inv0_u1 = buf;
@@ -310,10 +313,8 @@ static void computeCorresps(const cv::Mat &K,
 
     cv::Mat R       = Rt(cv::Rect(0, 0, 3, 3)).clone();
 
-    R.convertTo(R, CV_32FC1);
-
     cv::Mat KRK_inv = K * R * K_inv;
-    const float *KRK_inv_ptr = KRK_inv.ptr<const float>();
+    const double *KRK_inv_ptr = KRK_inv.ptr<const double>();
     for (int u1 = 0; u1 < depth1.cols; ++u1)
     {
         KRK_inv0_u1[u1] = KRK_inv_ptr[0] * u1;
@@ -332,31 +333,31 @@ static void computeCorresps(const cv::Mat &K,
     {
         const float *depth1_row = depth1.ptr<const float>(v1);
         const uchar *mask1_row  = selectMask1.ptr<const uchar>(v1);
-        for (int u1 = 0; u1 < depth1.rows; ++u1)
+        for (int u1 = 0; u1 < depth1.cols; ++u1)
         {
             float d1 = depth1_row[u1];
             if (mask1_row[u1])
             {
-                float transformed_d1 = d1 * (KRK_inv6_u1[u1] + KRK_inv7_v1_plus_KRK_inv8[v1]) + Kt_ptr[2];
+                float transformed_d1 = static_cast<float>(d1 * (KRK_inv6_u1[u1] + KRK_inv7_v1_plus_KRK_inv8[v1]) + Kt_ptr[2]);
                 if (transformed_d1 > 0)
                 {
                     float transformed_d1_inv = 1.f / transformed_d1;
-                    int u0 = cvRound( transformed_d1_inv * (d1 * (KRK_inv0_u1[u1] + KRK_inv1_v1_plus_KRK_inv2[v1]
-                            + Kt_ptr[0])) );
-                    int v0 = cvRound( transformed_d1_inv * (d1 * (KRK_inv3_u1[u1] + KRK_inv4_v1_plus_KRK_inv5[v1]
-                            + Kt_ptr[1])) );
+                    int u0 = cvRound( transformed_d1_inv * (d1 * (KRK_inv0_u1[u1] + KRK_inv1_v1_plus_KRK_inv2[v1])
+                            + Kt_ptr[0]) );
+                    int v0 = cvRound( transformed_d1_inv * (d1 * (KRK_inv3_u1[u1] + KRK_inv4_v1_plus_KRK_inv5[v1])
+                            + Kt_ptr[1]) );
 
                     if (r.contains(cv::Point(u0, v0)))
                     {
                         float d0 = depth0.at<float>(v0, u0);
-                        if (validMask0.at<uchar>(u0, v0) && std::abs(transformed_d1 - d0) <= maxDepthDiff)
+                        if (validMask0.at<uchar>(v0, u0) && std::abs(transformed_d1 - d0) <= maxDepthDiff)
                         {
                             cv::Vec2s &c = corresps_.at<cv::Vec2s>(v0, u0);
                             if (-1 != c[0])
                             {
                                 int exist_u1 = c[0], exist_v1 = c[1];
                                 float exist_d1 = depth1.at<float>(exist_v1, exist_u1) *
-                                        (KRK_inv6_u1[exist_u1] + KRK_inv7_v1_plus_KRK_inv8[exist_v1] + Kt_ptr[2]);
+                                        (KRK_inv6_u1[exist_u1] + KRK_inv7_v1_plus_KRK_inv8[exist_v1]) + Kt_ptr[2];
                                 if (transformed_d1 > exist_d1)
                                     continue;
                             }
@@ -413,14 +414,14 @@ static void computeProjectiveMatrix(const cv::Mat &ksi, cv::Mat &Rt)
 
 static bool testDeltaTransformation(const cv::Mat &deltaRt, float maxTranslation, int maxRotation)
 {
-    float translation = cv::norm(deltaRt(cv::Rect(3, 0, 1, 3)));
+    float translation = static_cast<float>(cv::norm(deltaRt(cv::Rect(3, 0, 1, 3))));
 
     cv::Mat rvec;
     cv::Rodrigues(deltaRt(cv::Rect(0, 0, 3, 3)), rvec);
 
     double rotation = cv::norm(rvec) * 180. / CV_PI;
 
-    return translation <= maxTranslation && rotation < (double)maxRotation;
+    return translation <= maxTranslation && rotation <= (double)maxRotation;
 }
 
 /*****************
@@ -537,8 +538,8 @@ bool RGBDOdometry::computeImpl(OdometryFrame &srcFrame, OdometryFrame &dstFrame,
         const cv::Mat &srcLevelDepth         = srcFrame.pyramidDepth_[level];
         const cv::Mat &dstLevelDepth         = dstFrame.pyramidDepth_[level];
 
-        const float fx = levelCameraMatrix.at<float>(0, 0);
-        const float fy = levelCameraMatrix.at<float>(1, 1);
+        const double fx = levelCameraMatrix.at<double>(0,0);
+        const double fy = levelCameraMatrix.at<double>(1,1);
         const double determintThreshold = 1e-6;
 
         cv::Mat AtA_rgbd, AtB_rgbd;
