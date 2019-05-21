@@ -1,6 +1,6 @@
 add_library( slam SHARED
 		config.cpp
-		RGBDOdometry.cpp )
+		orb.cpp )
 
 include_directories( "/usr/local/Cellar/eigen/3.3.7/include/eigen3" )
 
