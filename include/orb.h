@@ -16,7 +16,8 @@ namespace myslam
                    float    scaleFactor,
                    int      n_levels,
                    int      fastThreshold_low,
-                   int      fastThreshold_high);
+                   int      fastThreshold_high,
+                   double   knn_factor);
 
         // to-do: class Frame
         void detectOrbFeatures(const cv::Mat &input_img,
@@ -24,14 +25,15 @@ namespace myslam
                                cv::Mat &descriptors) const;
 
          std::vector<cv::DMatch> matchOrbFeatures(const cv::Mat &descriptors_prev,
-                                                  const cv::Mat &descriptors_curr);
+                                                  const cv::Mat &descriptors_curr) const;
 
     protected:
         cv::Ptr<cv::FeatureDetector> orb_detector_;
         cv::Ptr<cv::DescriptorMatcher> orb_matcher_;
 
         double knn_factor_;
-        int n_features_;
+        int fastThreshold_low_;
+        int fastThreshold_high_;
     };
 }
 

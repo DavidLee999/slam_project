@@ -10,8 +10,9 @@
 
 
 #include "config.h"
-#include "RGBDOdometry.h"
+#include "orb.h"
 
+using namespace myslam;
 bool readAssociateFile(const std::string 	    &config_file,
 					   std::vector<std::string> &rgb_files,
 					   std::vector<double> 		&rgb_times,
@@ -76,6 +77,7 @@ void readVOParams(float &min_depth,
     max_rotation    = Config::get<int>("max_rotation");
 }
 
+/*
 void run_slam(const std::vector<std::string> &rgb_files,
 			  const std::vector<double>      &rgb_times,
 			  const std::vector<std::string> &depth_files,
@@ -194,6 +196,7 @@ void run_slam(const std::vector<std::string> &rgb_files,
 	}
 
 }
+ */
 
 int main(int argc, char **argv)
 {
@@ -214,7 +217,29 @@ int main(int argc, char **argv)
 		return -1;
 	}
 
-	run_slam(rgb_files, rgb_times, depth_files, depth_times);
+	// test ORB class
+	cv::Mat img1 = cv::imread(rgb_files[0]);
+	cv::Mat img2 = cv::imread(rgb_files[1]);
+
+	std::vector<cv::KeyPoint> kps1, kps2;
+	cv::Mat desp1, desp2;
+
+	myslam::OrbFeature orb_feature;
+
+	orb_feature.detectOrbFeatures(img1, kps1, desp1);
+    orb_feature.detectOrbFeatures(img2, kps2, desp2);
+
+    std::vector<cv::DMatch> matches = orb_feature.matchOrbFeatures(desp1, desp2);
+
+    cv::Mat img_show;
+    cv::drawMatches(img1, kps1, img2, kps2, matches, img_show);
+
+
+    cv::namedWindow("ORB");
+    cv::imshow("ORB", img_show);
+    cv::waitKey(-1);
+    cv::destroyAllWindows();
+	// run_slam(rgb_files, rgb_times, depth_files, depth_times);
 
 	return 0;
 }
