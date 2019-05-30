@@ -2,14 +2,19 @@
 #define SLAM_ORB_H
 
 #include <vector>
+#include <memory>
 
 #include <opencv2/features2d/features2d.hpp>
+
 
 namespace myslam
 {
     class OrbFeature
     {
     public:
+
+        typedef std::shared_ptr<OrbFeature> Ptr;
+
         OrbFeature();
 
         OrbFeature(int      n_features,
@@ -22,7 +27,8 @@ namespace myslam
         // to-do: class Frame
         void detectOrbFeatures(const cv::Mat &input_img,
                                std::vector<cv::KeyPoint> &kps,
-                               cv::Mat &descriptors) const;
+                               cv::Mat &descriptors,
+                               int border_size) const;
 
          std::vector<cv::DMatch> matchOrbFeatures(const cv::Mat &descriptors_prev,
                                                   const cv::Mat &descriptors_curr) const;

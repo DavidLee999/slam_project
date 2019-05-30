@@ -1,5 +1,6 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
 
 #include <algorithm>
 
@@ -21,13 +22,26 @@ OrbFeature::OrbFeature(int n_features, float scaleFactor, int n_levels, int fast
     orb_matcher_  = cv::DescriptorMatcher::create("BruteForce-Hamming");
 }
 
-void OrbFeature::detectOrbFeatures(const cv::Mat &input_img, std::vector<cv::KeyPoint> &kps, cv::Mat &descriptors) const
+void OrbFeature::detectOrbFeatures(const cv::Mat &input_img, std::vector<cv::KeyPoint> &kps, cv::Mat &descriptors, int border_size) const
 {
     cv::Mat frame = input_img;
     if (1 != input_img.channels())
         cv::cvtColor(input_img, frame, cv::COLOR_BGR2GRAY);
 
-    orb_detector_->detectAndCompute(frame, cv::Mat(), kps, descriptors);
+    cv::Mat mask;
+    if (0 != border_size)
+    {
+        cv::Mat _mask(frame.size(), CV_8UC1, cv::Scalar(0));
+        _mask(cv::Rect(border_size, border_size, frame.cols - 2 * border_size, frame.rows - 2 * border_size)).setTo(255);
+        _mask.copyTo(mask);
+    }
+    else
+    {
+        cv::Mat _mask(frame.size(), CV_8UC1, cv::Scalar(255));
+        _mask.copyTo(mask);
+    }
+
+    orb_detector_->detectAndCompute(frame, mask, kps, descriptors);
 }
 
 std::vector<cv::DMatch> OrbFeature::matchOrbFeatures(const cv::Mat &descriptors_prev, const cv::Mat &descriptors_curr) const
@@ -45,16 +59,16 @@ std::vector<cv::DMatch> OrbFeature::matchOrbFeatures(const cv::Mat &descriptors_
 
     // uniqueness match.
     // do by epipolar geometry.
-    std::sort(matches.begin(), matches.end(),
-            [](cv::DMatch match1, cv::DMatch match2){ return match1.trainIdx < match2.trainIdx; });
+    // std::sort(matches.begin(), matches.end(),
+    //         [](cv::DMatch match1, cv::DMatch match2){ return match1.trainIdx < match2.trainIdx; });
 
-    std::vector<cv::DMatch> matches_inliers;
-    matches_inliers.reserve(matches.size());
-    matches_inliers.push_back(matches[0])
-    for (size_t i = 1; i < matches.size(); ++i)
-    {
-        if (matches[i].trainIdx == matches[i - 1].trainIdx)
-    }
+    // std::vector<cv::DMatch> matches_inliers;
+    // matches_inliers.reserve(matches.size());
+    // matches_inliers.push_back(matches[0])
+    // for (size_t i = 1; i < matches.size(); ++i)
+    // {
+    //     if (matches[i].trainIdx == matches[i - 1].trainIdx)
+    // }
 
-    return matches_tmp;
+    return matches;
 }

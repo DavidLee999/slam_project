@@ -17,6 +17,7 @@ include_directories( ${OpenCV_INCLUDE_DIRS} )
 
 set( THIRD_PARTY_LIBS ${OpenCV_LIBS} )
 
-include_directories( ${PROJECT_SOURCE_DIR}/include )
+include_directories(  ${PROJECT_SOURCE_DIR}/
+        ${PROJECT_SOURCE_DIR}/include )
 add_subdirectory( src )
 add_subdirectory( demo )

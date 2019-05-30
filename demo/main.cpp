@@ -226,8 +226,8 @@ int main(int argc, char **argv)
 
 	myslam::OrbFeature orb_feature;
 
-	orb_feature.detectOrbFeatures(img1, kps1, desp1);
-    orb_feature.detectOrbFeatures(img2, kps2, desp2);
+	orb_feature.detectOrbFeatures(img1, kps1, desp1, 31);
+    orb_feature.detectOrbFeatures(img2, kps2, desp2, 31);
 
     std::vector<cv::DMatch> matches = orb_feature.matchOrbFeatures(desp1, desp2);
 
