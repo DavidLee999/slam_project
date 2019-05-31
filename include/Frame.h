@@ -28,13 +28,15 @@ namespace myslam
 
         Eigen::Isometry3d Tcw;
 
-        OrbFeature feature_extractor;
+        std::shared_ptr<OrbFeature> feature_extractor;
 
         int num_features;
         std::vector<cv::KeyPoint>  features;
         cv::Mat descriptors;
+        std::vector<bool> outliers;
+
         std::vector<ushort> depths;
-        // std::vector<bool> outliers;
+        float depth_scale = 0.002;
 
         // to-do: MapPoint Class
         std::vector<cv::Point3f> map_points;
@@ -43,8 +45,9 @@ namespace myslam
 
         Frame(const cv::Mat &rgb_frame,
               const cv::Mat &depth_frame,
-              OrbFeature &_feature_extractor,
-              int _id = -1);
+              std::shared_ptr<OrbFeature> _feature_extractor,
+              int _id = -1,
+              float _depth_scale = 0.002);
 
         void setTransformation(const Eigen::Isometry3d & T)
         {

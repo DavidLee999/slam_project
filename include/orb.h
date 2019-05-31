@@ -13,8 +13,6 @@ namespace myslam
     {
     public:
 
-        typedef std::shared_ptr<OrbFeature> Ptr;
-
         OrbFeature();
 
         OrbFeature(int      n_features,
